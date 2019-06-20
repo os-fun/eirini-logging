@@ -10,15 +10,17 @@ import (
 
 func main() {
 
+	fmt.Println("Start Reading")
+
 	f := os.NewFile(uintptr(syscall.Stdout), "/proc/"+os.Args[1]+"/fd/1")
 	defer f.Close()
 	const BufferSize = 4000
 	buffer := make([]byte, BufferSize)
 
 	for {
-		//		f.Seek(0, 0)
+		f.Seek(0, 0)
 		bytesread, err := f.Read(buffer)
-		fmt.Println(buffer)
+		fmt.Println(string(buffer))
 		if err != nil {
 			if err != io.EOF {
 				fmt.Println(err)
