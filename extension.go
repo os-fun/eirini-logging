@@ -2,15 +2,21 @@ package main
 
 import (
 	"context"
+	"errors"
+	"net/http"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	eirinix "github.com/SUSE/eirinix"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
+	v1alpha1 "k8s.io/api/rbac/v1alpha1"
+	rbac "k8s.io/client-go/kubernetes/typed/rbac/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission/types"
 )
 
-type Extension struct{}
+type Extension struct{ Namespace string }
 
 func getVolume(name, path string) (v1.Volume, v1.VolumeMount) {
 	mount := v1.VolumeMount{
@@ -27,45 +33,54 @@ func getVolume(name, path string) (v1.Volume, v1.VolumeMount) {
 
 func (ext *Extension) Handle(ctx context.Context, eiriniManager eirinix.Manager, pod *corev1.Pod, req types.Request) types.Response {
 
-	// if pod == nil {
-	// 	return admission.ErrorResponse(http.StatusBadRequest, errors.New("No pod could be decoded from the request"))
-	// }
+	if pod == nil {
+		return admission.ErrorResponse(http.StatusBadRequest, errors.New("No pod could be decoded from the request"))
+	}
 
-	// config, err := eiriniManager.GetKubeConnection()
-	// if err != nil {
-	// 	return admission.ErrorResponse(http.StatusBadRequest, errors.New("No pod could be decoded from the request"))
-	// }
+	config, err := eiriniManager.GetKubeConnection()
+	if err != nil {
+		return admission.ErrorResponse(http.StatusBadRequest, errors.New("No pod could be decoded from the request"))
+	}
 
-	// client, err := corev1client.NewForConfig(config)
-	// if err != nil {
-	// 	return admission.ErrorResponse(http.StatusBadRequest, errors.New("No pod could be decoded from the request"))
-	// }
+	rbacClient, err := rbac.NewForConfig(config)
+	if err != nil {
+		return admission.ErrorResponse(http.StatusBadRequest, errors.New("No pod could be decoded from the request"))
+	}
 
-	// client.RESTClient().Get().URL().Host=
+	_, err = rbacClient.Roles(ext.Namespace).Create(&v1alpha1.Role{
+		TypeMeta:   metav1.TypeMeta{Kind: "Role", APIVersion: "rbac.authorization.k8s.io/v1"},
+		ObjectMeta: metav1.ObjectMeta{Namespace: ext.Namespace, Name: "role-" + pod.Name},
+		Rules: []v1alpha1.PolicyRule{
+			{
+				ResourceNames: []string{pod.Name},
+				Verbs:         []string{"get"},
+				Resources:     []string{"pods", "pods/log"},
+				APIGroups:     []string{""},
+			},
+		}})
+	if err != nil {
+		return admission.ErrorResponse(http.StatusBadRequest, errors.New("No pod could be decoded from the request"))
+	}
+
+	_, err = rbacClient.RoleBindings("default").Create(&v1alpha1.RoleBinding{
+		TypeMeta:   metav1.TypeMeta{Kind: "RoleBinding", APIVersion: "rbac.authorization.k8s.io/v1"},
+		ObjectMeta: metav1.ObjectMeta{Namespace: ext.Namespace, Name: "role-binding-" + pod.Name},
+		Subjects:   []v1alpha1.Subject{{Kind: "ServiceAccount", Name: "default", Namespace: ext.Namespace}},
+		RoleRef: v1alpha1.RoleRef{
+			Kind:     "Role",
+			Name:     "role-" + pod.Name,
+			APIGroup: "rbac.authorization.k8s.io",
+		}})
+	if err != nil {
+		return admission.ErrorResponse(http.StatusBadRequest, errors.New("No pod could be decoded from the request"))
+	}
 
 	podCopy := pod.DeepCopy()
-	sidecar := corev1.Container{}
-	sidecar.Name = "scf"
-	sidecar.Image = "busybox"
-	sidecar.Command = []string{"/bin/sh", "-c", "sleep 3450404030"}
-	// if len(podCopy.Spec.ServiceAccountName) == 0 {
-	// 	podCopy.Spec.ServiceAccountName = "default"
-
-	// }
-
-	//      /proc/1/fd/1
-	for i := range podCopy.Spec.Containers {
-		c := &podCopy.Spec.Containers[i]
-
-		c.VolumeMounts = append(c.VolumeMounts, corev1.VolumeMount{Name: "sharedstdout", MountPath: "/var/log/eiriniapp"})
-
-		c.Args = append(c.Args, "|", "tee", "/var/log/eiriniapp/logs")
-
-		//c.Command = append(c.Command)
+	sidecar := corev1.Container{
+		Name:    "eirini-logging",
+		Image:   "cfcontainerization/drone-ci-image",
+		Command: []string{"/bin/bash", "-c", "kubectl logs -f " + pod.Name + " -n " + ext.Namespace},
 	}
-	podCopy.Spec.Volumes = append(podCopy.Spec.Volumes, corev1.Volume{Name: "sharedstdout"})
-
-	sidecar.VolumeMounts = append(sidecar.VolumeMounts, corev1.VolumeMount{Name: "sharedstdout", MountPath: "/var/log/eiriniapp"})
 
 	podCopy.Spec.Containers = append(podCopy.Spec.Containers, sidecar)
 
