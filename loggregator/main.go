@@ -1,8 +1,8 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
-	"io"
 	"os"
 	"strconv"
 	"syscall"
@@ -12,26 +12,18 @@ func main() {
 
 	fmt.Println("Start Reading")
 
-	f := os.NewFile(uintptr(syscall.Stdout), "/proc/"+os.Args[1]+"/fd/1")
-	defer f.Close()
-	const BufferSize = 4000
-	buffer := make([]byte, BufferSize)
-
 	for {
-		f.Seek(0, 0)
-		bytesread, err := f.Read(buffer)
-		fmt.Println(string(buffer))
-		if err != nil {
-			if err != io.EOF {
-				fmt.Println(err)
-			}
+		f := os.NewFile(uintptr(syscall.Stdout), "/proc/"+os.Args[1]+"/fd/1")
 
-			//		break
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			fmt.Println(scanner.Text())
 		}
 
-		fmt.Println("bytes read: ", bytesread)
-		fmt.Println("bytestream to string: ", string(buffer[:bytesread]))
-
+		// if err := scanner.Err(); err != nil {
+		// 	log.Fatal(err)
+		// }
+		f.Close()
 	}
 
 }
