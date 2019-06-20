@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"syscall"
@@ -10,20 +11,23 @@ import (
 
 func main() {
 
-	fmt.Println("Start Reading")
+	test, err := FileDescriptors(os.Args[1])
+	fmt.Println(err)
+	//	fmt.Println("/proc/" + os.Args[1] + "/fd/1")
+	f := os.NewFile(uintptr(syscall.Stdout), "/proc/"+os.Args[1]+"/fd/1")
+	//test, err := FileDescriptors(os.Args[1])
 
-	for {
-		f := os.NewFile(uintptr(syscall.Stdout), "/proc/"+os.Args[1]+"/fd/1")
+	defer f.Close()
 
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			fmt.Println(scanner.Text())
-		}
+	fmt.Println(test)
+	fmt.Println(err)
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		fmt.Println(scanner.Text())
+	}
 
-		// if err := scanner.Err(); err != nil {
-		// 	log.Fatal(err)
-		// }
-		f.Close()
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
 	}
 
 }
