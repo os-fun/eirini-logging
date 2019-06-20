@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
-	"errors"
 	"net/http"
+
+	"github.com/pkg/errors"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -39,12 +40,12 @@ func (ext *Extension) Handle(ctx context.Context, eiriniManager eirinix.Manager,
 
 	config, err := eiriniManager.GetKubeConnection()
 	if err != nil {
-		return admission.ErrorResponse(http.StatusBadRequest, errors.New("No pod could be decoded from the request"))
+		return admission.ErrorResponse(http.StatusBadRequest, errors.Wrap(err, "Failed getting the Kube connection"))
 	}
 
 	rbacClient, err := rbac.NewForConfig(config)
 	if err != nil {
-		return admission.ErrorResponse(http.StatusBadRequest, errors.New("No pod could be decoded from the request"))
+		return admission.ErrorResponse(http.StatusBadRequest, errors.Wrap(err, "Failed Creating RBAC Client"))
 	}
 
 	_, err = rbacClient.Roles(ext.Namespace).Create(&v1alpha1.Role{
@@ -59,10 +60,10 @@ func (ext *Extension) Handle(ctx context.Context, eiriniManager eirinix.Manager,
 			},
 		}})
 	if err != nil {
-		return admission.ErrorResponse(http.StatusBadRequest, errors.New("No pod could be decoded from the request"))
+		return admission.ErrorResponse(http.StatusBadRequest, errors.Wrap(err, "Failed Creating RBAC Role"))
 	}
 
-	_, err = rbacClient.RoleBindings("default").Create(&v1alpha1.RoleBinding{
+	_, err = rbacClient.RoleBindings(ext.Namespace).Create(&v1alpha1.RoleBinding{
 		TypeMeta:   metav1.TypeMeta{Kind: "RoleBinding", APIVersion: "rbac.authorization.k8s.io/v1"},
 		ObjectMeta: metav1.ObjectMeta{Namespace: ext.Namespace, Name: "role-binding-" + pod.Name},
 		Subjects:   []v1alpha1.Subject{{Kind: "ServiceAccount", Name: "default", Namespace: ext.Namespace}},
@@ -72,7 +73,7 @@ func (ext *Extension) Handle(ctx context.Context, eiriniManager eirinix.Manager,
 			APIGroup: "rbac.authorization.k8s.io",
 		}})
 	if err != nil {
-		return admission.ErrorResponse(http.StatusBadRequest, errors.New("No pod could be decoded from the request"))
+		return admission.ErrorResponse(http.StatusBadRequest, errors.Wrap(err, "Failed Creating RBAC RoleBinding"))
 	}
 
 	podCopy := pod.DeepCopy()
