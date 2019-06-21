@@ -5,14 +5,13 @@ import (
 	"net/http"
 
 	"github.com/pkg/errors"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	eirinix "github.com/SUSE/eirinix"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
-	v1alpha1 "k8s.io/api/rbac/v1alpha1"
-	rbac "k8s.io/client-go/kubernetes/typed/rbac/v1alpha1"
+	rbacapi "k8s.io/api/rbac/v1"
+	rbac "k8s.io/client-go/kubernetes/typed/rbac/v1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission/types"
 )
@@ -48,10 +47,10 @@ func (ext *Extension) Handle(ctx context.Context, eiriniManager eirinix.Manager,
 		return admission.ErrorResponse(http.StatusBadRequest, errors.Wrap(err, "Failed Creating RBAC Client"))
 	}
 
-	_, err = rbacClient.Roles(ext.Namespace).Create(&v1alpha1.Role{
+	_, err = rbacClient.Roles(ext.Namespace).Create(&rbacapi.Role{
 		TypeMeta:   metav1.TypeMeta{Kind: "Role", APIVersion: "rbac.authorization.k8s.io/v1"},
 		ObjectMeta: metav1.ObjectMeta{Namespace: ext.Namespace, Name: "role-" + pod.Name},
-		Rules: []v1alpha1.PolicyRule{
+		Rules: []rbacapi.PolicyRule{
 			{
 				ResourceNames: []string{pod.Name},
 				Verbs:         []string{"get"},
@@ -60,14 +59,14 @@ func (ext *Extension) Handle(ctx context.Context, eiriniManager eirinix.Manager,
 			},
 		}})
 	if err != nil {
-		return admission.ErrorResponse(http.StatusBadRequest, errors.Wrap(err, "Failed Creating RBAC Role"))
+		return admission.ErrorResponse(http.StatusBadRequest, errors.Wrap(err, "Failed Creating RBAC Role "))
 	}
 
-	_, err = rbacClient.RoleBindings(ext.Namespace).Create(&v1alpha1.RoleBinding{
+	_, err = rbacClient.RoleBindings(ext.Namespace).Create(&rbacapi.RoleBinding{
 		TypeMeta:   metav1.TypeMeta{Kind: "RoleBinding", APIVersion: "rbac.authorization.k8s.io/v1"},
 		ObjectMeta: metav1.ObjectMeta{Namespace: ext.Namespace, Name: "role-binding-" + pod.Name},
-		Subjects:   []v1alpha1.Subject{{Kind: "ServiceAccount", Name: "default", Namespace: ext.Namespace}},
-		RoleRef: v1alpha1.RoleRef{
+		Subjects:   []rbacapi.Subject{{Kind: "ServiceAccount", Name: "default", Namespace: ext.Namespace}},
+		RoleRef: rbacapi.RoleRef{
 			Kind:     "Role",
 			Name:     "role-" + pod.Name,
 			APIGroup: "rbac.authorization.k8s.io",
