@@ -76,11 +76,25 @@ func (ext *Extension) Handle(ctx context.Context, eiriniManager eirinix.Manager,
 	}
 
 	podCopy := pod.DeepCopy()
+
+	// FIXME: we assume that the first container is the eirini app
 	sidecar := corev1.Container{
-		Name:    "eirini-logging",
-		Image:   "cfcontainerization/drone-ci-image",
-		Command: []string{"/bin/bash", "-c", "kubectl logs -f " + pod.Name + " -n " + ext.Namespace},
+		Name:         "eirini-logging",
+		Image:        "jimmykarily/eirini-logging-sidecar",
+		Args:         []string{"logs", "-f", pod.Name, "-n", ext.Namespace, "-c", podCopy.Spec.Containers[0].Name},
+		VolumeMounts: podCopy.Spec.Containers[0].VolumeMounts, // Volumes are mounted for kubeAPI access from the sidecar container
 	}
+
+	// TODO: We need to add specific permission rules to be able to do this below
+	sidecar.Lifecycle = &v1.Lifecycle{
+		PreStop: &v1.Handler{
+			Exec: &v1.ExecAction{
+				Command: []string{"/bin/bash",
+					"-c",
+					"kubectl delete role " + "role-" + pod.Name + " -n " + ext.Namespace + " && " + "kubectl delete rolebinding " + "role-binding-" + pod.Name + " -n " + ext.Namespace,
+				},
+			},
+		}}
 
 	podCopy.Spec.Containers = append(podCopy.Spec.Containers, sidecar)
 
